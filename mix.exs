@@ -38,7 +38,8 @@ defmodule Scrivener.Ecto.Mixfile do
 
   defp deps do
     [
-      {:scrivener, "~> 2.4"},
+      {:scrivener,
+       github: "RiverFinancial/scrivener", ref: "e21e9e83b4e101d2e3b5e24acb29289708746dac"},
       {:ecto, "~> 3.12"},
       {:ecto_sql, "~> 3.12", only: :test},
       {:dialyxir, "~> 1.0", only: :dev},
