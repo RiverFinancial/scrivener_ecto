@@ -1,16 +1,18 @@
 defimpl Scrivener.Paginater, for: Ecto.Query do
   import Ecto.Query
 
-  alias Scrivener.{Config, Page}
+  alias Scrivener.{Config, Page, SimplePage}
 
   @moduledoc false
 
-  @spec paginate(Ecto.Query.t(), Scrivener.Config.t()) :: Scrivener.Page.t()
+  @spec paginate(Ecto.Query.t(), Scrivener.Config.t()) ::
+          Scrivener.Page.t() | Scrivener.SimplePage.t()
   def paginate(query, %Config{
-        page_size: page_size,
-        page_number: page_number,
+        page_type: :normal,
         module: repo,
         caller: caller,
+        page_number: page_number,
+        page_size: page_size,
         options: options
       }) do
     total_entries =
@@ -26,25 +28,59 @@ defimpl Scrivener.Paginater, for: Ecto.Query do
     page_number =
       if allow_overflow_page_number, do: page_number, else: min(total_pages, page_number)
 
+    entries =
+      if page_number > total_pages,
+        do: [],
+        else: entries(query, repo, page_number, page_size, options)
+
     %Page{
       page_size: page_size,
       page_number: page_number,
-      entries: entries(query, repo, page_number, total_pages, page_size, options),
+      entries: entries,
       total_entries: total_entries,
       total_pages: total_pages
     }
   end
 
-  defp entries(_query, _repo, page_number, total_pages, _page_size, _options)
-       when page_number > total_pages,
-       do: []
+  def paginate(query, %Config{
+        page_type: :simple,
+        module: repo,
+        page_number: page_number,
+        page_size: page_size,
+        options: options
+      }) do
+    entries_with_maybe_one_extra =
+      entries(query, repo, page_number, page_size, options, extra_entry_size: 1)
 
-  defp entries(query, repo, page_number, _total_pages, page_size, options) do
+    {entries, has_more} =
+      if length(entries_with_maybe_one_extra) > page_size do
+        entries =
+          entries_with_maybe_one_extra
+          |> Enum.reverse()
+          |> tl()
+          |> Enum.reverse()
+
+        {entries, true}
+      else
+        {entries_with_maybe_one_extra, false}
+      end
+
+    %SimplePage{
+      page_size: page_size,
+      page_number: page_number,
+      entries: entries,
+      has_more: has_more
+    }
+  end
+
+  defp entries(query, repo, page_number, page_size, options, opts \\ []) do
+    extra_entry_size = Keyword.get(opts, :extra_entry_size, 0)
     offset = Keyword.get_lazy(options, :offset, fn -> page_size * (page_number - 1) end)
+    limit = page_size + extra_entry_size
 
     query
     |> offset(^offset)
-    |> limit(^page_size)
+    |> limit(^limit)
     |> repo.all(options)
   end
 
